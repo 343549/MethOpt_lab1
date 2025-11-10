@@ -52,7 +52,8 @@ sm.load_problem('problem.txt')
 
 ЗЛП в txt-файле должна быть представлена в специальном формате. Например, следующую ЗЛП:
 
-![](images/1.png)
+<img width="1020" height="282" alt="1" src="https://github.com/user-attachments/assets/fa632d9d-0841-474f-a8b6-82832cb493cb" />
+
 
 нужно записать в txt-файле в следующем формате:
 
@@ -101,23 +102,28 @@ print(answer)
 
 Для демонстрации работы программы возьмём ЗЛП из варианта №1 (из-за того, что не нашёл, взял рандомный номер) (данная ЗЛП уже была частично разобрана выше):
 
-![](./images/1.png)
+<img width="1020" height="282" alt="1" src="https://github.com/user-attachments/assets/0b4c8104-bc07-4e88-8a89-fc15cff317b0" />
+
 
 Для начала запишем данную ЗЛП в txt-файл в соответствующем формате:
 
-![](./images/2.png)
+<img width="662" height="416" alt="2" src="https://github.com/user-attachments/assets/7dc6d68e-2047-4c49-a2f5-ebdf28348ed2" />
+
 
 Далее создадим python-файл, где импортируем класс `SimplexMethod`, создадим его экземпляр, загрузим ЗЛП, получим и выведем ответ:
 
-![](./images/3.png)
+<img width="780" height="460" alt="3" src="https://github.com/user-attachments/assets/667c182c-f1fb-4fd7-be47-c59dba7d64e1" />
+
 
 Теперь запустим данный python-файл и получим решение:
 
-![](./images/4.png)
+<img width="506" height="32" alt="4" src="https://github.com/user-attachments/assets/ea85986e-8146-4ca8-b6f3-293151293596" />
+
 
 Сравним полученное решение с решением, рассчитанном на [онлайн-калькуляторе](https://programforyou.ru/calculators/simplex-method):
 
-![](./images/5.png)
+<img width="886" height="414" alt="5" src="https://github.com/user-attachments/assets/440d6dd2-321f-41a8-acf3-e94032b3c4cd" />
+
 
 Видим, что решения совпадают.
 
@@ -134,4 +140,5 @@ print(answer)
 - Протестировать получившуюся программу (вручную и с помощью написания автоматических тестов с использованием `pytest`), чтобы убедиться в корректности её работы и, при необходимости, найти причины ошибок и внести соответствующие исправления в код.
 
 На мой взгляд, выполнение вышеописанных задач дало мне ценный опыт работы над подобным типом проектов, что может пригодиться мне в будущем.
+
 
