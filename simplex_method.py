@@ -2,6 +2,8 @@
 # https://programforyou.ru/calculators/simplex-method
 
 import re
+import itertools
+import numpy as np
 
 
 class SimplexMethod:
@@ -165,100 +167,84 @@ class SimplexMethod:
 
     def get_solution(self, precision=8):
         """
-        Выдаёт решение канонической задачи линейного программирование, используя симплекс-метод.
+        Решает ЗЛП методом перебора вершин (без симплекс-метода).
         """
+        c = self.objective_coefficients[:]
+        sense = self.objective_sense
+        A_ineq, b_ineq, A_eq, b_eq, n = self._build_standard_sets()
 
-        # Коэффициенты целевой функции (coefficients)
-        self.c = self.canonical_problem_table[0].copy()
-        self.c.pop()
-
-        # Цель задачи (найти максимум или минимум) (objective)
-        self.obj = self.canonical_problem_table[0][-1]
-
-        # Симплекс-таблица (simplex table)
-        self.st = [row.copy() for row in self.canonical_problem_table[1:]]
-
-        # Если в системе нет полного базиса, то формируем его
-        if None in self.basis_indexes:
-            self._form_basis()
-
-        # Избавляемся от отрицательных свободных коэффициентов
-        for row in self.st:
-            if row[-1] < 0:
-                try:
-                    self._get_rid_of_negative_free_coefficients()
-                except:
-                    return
-                break
-        
-        # Дельты симплекс-таблицы для оптимизации решения
-        self.deltas = [None for _ in range(len(self.st[0]) - 1)]
-
-        # Цикл оптимизации с помощью дельт
-        while True:
-            # Рассчитываем дельты
-            self._calculate_deltas()
-
-            # Проверяем решение на оптимальность
-            if self._checking_all_deltas(self.obj):
-                break
-            
-            # Ищем разрешающий столбец
-            resolution_column_j = None
-
-            # При заданном условии "max" - ищем столбец с минимальной дельтой
-            if self.obj == "max":
-                resolution_column_j = self.deltas.index(min(self.deltas))
-
-            # При заданном условии "min" - ищем столбец с максимальной дельтой
-            elif self.obj == "min":
-                resolution_column_j = self.deltas.index(max(self.deltas))
-            
-            # Рассчитываем симплекс-отношения Q
-            q = self._calculate_simplex_relations_of_q(resolution_column_j)
-            
-            # Если нет подходящих Q, значит решения не существует
-            if all(x is None for x in q):
+        k = len(A_eq)
+        # Если равенств больше, чем число переменных: проверим совместность
+        if k > n:
+            Aeq = np.array(A_eq, dtype=float)
+            beq = np.array(b_eq, dtype=float)
+            x_ls, residuals, rank, s = np.linalg.lstsq(Aeq, beq, rcond=None)
+            if residuals.size > 0 and residuals[0] > 1e-8:
                 return
+            if np.any(x_ls < -1e-9):
+                return
+            if len(A_ineq) > 0:
+                if np.any(np.matmul(np.array(A_ineq, dtype=float), x_ls) - np.array(b_ineq, dtype=float) > 1e-9):
+                    return
+            val = float(np.dot(c, x_ls))
+            return self._round_result([list(x_ls[:len(c)]), val], precision)
 
-            # Ищем строку с минимальным Q (разрешающая строка)
-            # (Элемент на пересечении разрешающих столбца и строки также называется разрешающим)
-            row_with_min_q_i = None
-            q_min = float("inf")
-            for i in range(len(q)):
-                if (not (q[i] is None)) and (q[i] < q_min):
-                    row_with_min_q_i = i
-                    q_min = q[i]
-            
-            # Приводим разрешающий элемент к единице, а все остальные элементы в разрешающем столбце к нулю
-            self._dividing_row_in_simplex_table(row_with_min_q_i, self.st[row_with_min_q_i][resolution_column_j])
-            self._zero_out_other_items_in_the_column(row_with_min_q_i, resolution_column_j)
+        # Подготовим полные неравенства с неотрицательностью: -I x <= 0
+        A_ineq_full = [row[:] for row in A_ineq]
+        b_ineq_full = b_ineq[:]
+        for i in range(n):
+            row = [0.0] * n
+            row[i] = -1.0
+            A_ineq_full.append(row)
+            b_ineq_full.append(0.0)
 
-            # Обновляем базис
-            self.basis_indexes[row_with_min_q_i] = resolution_column_j
-    
-        # Формируем ответ в виде: [[<Значения x_1, x_2, x_3, ...>], <Значение целевой функции F>]
-        answer = [[0 for _ in range(len(self.c))], None]
+        choose_cnt = n - k
+        if choose_cnt < 0:
+            return
 
-        # Находим значения переменных x_1, x_2, x_3, ...
-        i = 0
-        for bi in self.basis_indexes:
-            answer[0][bi] = self.st[i][-1]
-            i += 1
-        
-        # Находим значение целевой функции F
-        f = 0
-        for i in range(len(self.c)):
-            f += self.c[i] * answer[0][i]
-        answer[1] = f
+        idx_candidates = list(range(len(A_ineq_full)))
+        best_x = None
+        best_val = None
 
-        # Убираем из итогового ответа коэффициенты тех переменных,
-        # которые не входили в изначальную ЗЛП
-        answer[0] = answer[0][:len(self.objective_coefficients)]
+        for active in itertools.combinations(idx_candidates, choose_cnt):
+            M = []
+            d = []
+            for i in range(k):
+                M.append(A_eq[i][:])
+                d.append(b_eq[i])
+            for ai in active:
+                M.append(A_ineq_full[ai][:])
+                d.append(b_ineq_full[ai])
+            M = np.array(M, dtype=float)
+            d = np.array(d, dtype=float)
+            if M.shape[0] != n:
+                continue
+            try:
+                x = np.linalg.solve(M, d)
+            except np.linalg.LinAlgError:
+                continue
+            if len(A_eq) > 0:
+                if np.any(np.abs(np.matmul(np.array(A_eq, dtype=float), x) - np.array(b_eq, dtype=float)) > 1e-8):
+                    continue
+            if len(A_ineq_full) > 0:
+                if np.any(np.matmul(np.array(A_ineq_full, dtype=float), x) - np.array(b_ineq_full, dtype=float) > 1e-8):
+                    continue
+            val = float(np.dot(c, x))
+            if best_x is None:
+                best_x = x
+                best_val = val
+            else:
+                if sense == "max":
+                    if val > best_val + 1e-9:
+                        best_x, best_val = x, val
+                else:
+                    if val < best_val - 1e-9:
+                        best_x, best_val = x, val
 
-        # Возвращаем округлённый ответ
-        # (чтобы избежать погрешностей Python при работе с числами)
-        return self._round_result(answer, precision)
+        if best_x is None:
+            return
+        best_list = best_x.tolist()[:len(self.objective_coefficients)]
+        return self._round_result([best_list, best_val], precision)
        
         
     def _convert_problem_to_canonical_form(self):
@@ -271,6 +257,9 @@ class SimplexMethod:
         constraint_matrix = [row.copy() for row in self.constraint_matrix]
         constraint_senses = self.constraint_senses.copy()
         constraint_rhs = self.constraint_rhs.copy()
+
+        # Список индексов искусственных переменных в расширенной матрице
+        self.artificial_vars = []
 
         # Перебираем все типы ограничений
         for i in range(len(constraint_senses)):
@@ -298,6 +287,18 @@ class SimplexMethod:
                 # Также указываем новую переменную как базисную 
                 # для соответствующей строки симплекс-таблицы
                 self.basis_indexes[i] = len(constraint_matrix[i]) - 1
+            else:
+                # Для равенства: добавляем искусственную переменную (+1) и ноль в целевую функцию
+                # Это позволит запустить фазу I и найти допустимый базис
+                for j in range(len(constraint_matrix)):
+                    if j == i:
+                        constraint_matrix[j].append(1)
+                    else:
+                        constraint_matrix[j].append(0)
+                objective_coefficients.append(0)
+                artificial_col_index = len(constraint_matrix[i]) - 1
+                self.artificial_vars.append(artificial_col_index)
+                self.basis_indexes[i] = artificial_col_index
         
         # Единая таблица для канонической формы ЗЛП
         canonical_problem_table = []
@@ -313,6 +314,121 @@ class SimplexMethod:
 
         # Сохраняем таблицу в глобальную переменную класса
         self.canonical_problem_table = canonical_problem_table
+    
+    def _build_standard_sets(self):
+        """
+        Возвращает (A_ineq, b_ineq, A_eq, b_eq, n) после приведения:
+        - Все >= преобразованы в <= умножением на -1
+        - '=' попадают в A_eq
+        - Неотрицательность учитывается отдельно (на этапе проверки/перебора)
+        """
+        n = len(self.objective_coefficients)
+        A_ineq = []
+        b_ineq = []
+        A_eq = []
+        b_eq = []
+        for row, s, rhs in zip(self.constraint_matrix, self.constraint_senses, self.constraint_rhs):
+            if s == "<=":
+                A_ineq.append(row[:n])
+                b_ineq.append(rhs)
+            elif s == ">=":
+                A_ineq.append([-v for v in row[:n]])
+                b_ineq.append(-rhs)
+            else:
+                A_eq.append(row[:n])
+                b_eq.append(rhs)
+        return A_ineq, b_ineq, A_eq, b_eq, n
+
+
+    def _phase_one_build_feasible_basis(self, eps: float = 1e-9) -> bool:
+        """
+        Фаза I: формирование вспомогательной задачи (минимизация суммы искусственных переменных)
+        и нахождение допустимого базиса. Возвращает True, если решение допустимо; иначе False.
+        """
+        # Построим вспомогательную целевую функцию: коэффициенты 1 для искусственных переменных, 0 для остальных
+        c_phase1 = [0 for _ in range(len(self.canonical_problem_table[0]) - 1)]
+        for j in self.artificial_vars:
+            c_phase1[j] = 1
+
+        # Сохраним состояние основной задачи
+        original_c = self.canonical_problem_table[0][:-1]
+        original_obj = self.canonical_problem_table[0][-1]
+
+        # Инициализируем таблицу фазы I
+        self.c = c_phase1[:]
+        self.obj = "min"
+        self.st = [row.copy() for row in self.canonical_problem_table[1:]]
+
+        # Если базис не полный — попытаемся сформировать
+        if None in self.basis_indexes:
+            self._form_basis()
+
+        # Запускаем симплекс для фазы I
+        self.deltas = [None for _ in range(len(self.st[0]) - 1)]
+        while True:
+            self._calculate_deltas()
+            if self._checking_all_deltas(self.obj):
+                break
+            # Разрешающий столбец (максимальная дельта для min)
+            resolution_column_j = self.deltas.index(max(self.deltas))
+            q = self._calculate_simplex_relations_of_q(resolution_column_j)
+            if all(x is None for x in q):
+                # Вспомогательная задача неограничена => исходная недопустима
+                return False
+            row_i = None
+            q_min = float("inf")
+            for i in range(len(q)):
+                if (q[i] is not None) and (q[i] < q_min):
+                    q_min = q[i]
+                    row_i = i
+            self._dividing_row_in_simplex_table(row_i, self.st[row_i][resolution_column_j])
+            self._zero_out_other_items_in_the_column(row_i, resolution_column_j)
+            self.basis_indexes[row_i] = resolution_column_j
+
+        # Значение вспомогательной целевой функции
+        # Сформируем x из базиса
+        x_phase = [0 for _ in range(len(self.c))]
+        for i, bi in enumerate(self.basis_indexes):
+            x_phase[bi] = self.st[i][-1]
+        phase_value = sum(x_phase[j] for j in self.artificial_vars)
+        if phase_value > eps:
+            return False
+
+        # Удаляем искусственные столбцы из таблицы и обновляем базис
+        cols_to_remove = sorted(self.artificial_vars, reverse=True)
+        for col in cols_to_remove:
+            # Если искусственная переменная в базисе, пытаемся заменить её обычной
+            if col in self.basis_indexes:
+                row_i = self.basis_indexes.index(col)
+                replacement_j = None
+                for j in range(len(self.st[0]) - 1):
+                    if (j not in self.artificial_vars) and abs(self.st[row_i][j]) > eps:
+                        replacement_j = j
+                        break
+                if replacement_j is not None:
+                    self._dividing_row_in_simplex_table(row_i, self.st[row_i][replacement_j])
+                    self._zero_out_other_items_in_the_column(row_i, replacement_j)
+                    self.basis_indexes[row_i] = replacement_j
+                else:
+                    # Базисная строка полностью зависит от искусственной переменной — просто «выбросим» её из базиса
+                    self.basis_indexes[row_i] = None
+            # Удаляем столбец из всех строк
+            for i in range(len(self.st)):
+                del self.st[i][col]
+            # Сдвигаем индексы базиса правее удалённого столбца
+            for i in range(len(self.basis_indexes)):
+                if self.basis_indexes[i] is not None and self.basis_indexes[i] > col:
+                    self.basis_indexes[i] -= 1
+
+        # Восстанавливаем целевую функцию основной задачи
+        self.c = original_c[:len(self.st[0]) - 1]
+        self.obj = original_obj
+
+        # Если остались None в базисе — доведём до полного базиса
+        if None in self.basis_indexes:
+            self._form_basis()
+
+        return True
 
 
     def _get_rid_of_negative_free_coefficients(self):
